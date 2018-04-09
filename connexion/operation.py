@@ -13,7 +13,7 @@ from .decorators.produces import BaseSerializer, Produces
 from .decorators.response import ResponseValidator
 from .decorators.security import (get_tokeninfo_func, get_tokeninfo_url,
                                   security_passthrough, verify_oauth_local,
-                                  verify_oauth_remote)
+                                  verify_oauth_remote, verify_basic_auth)
 from .decorators.validation import (ParameterValidator, RequestBodyValidator,
                                     TypeValidationError)
 from .exceptions import InvalidSpecification
@@ -97,7 +97,9 @@ class SecureOperation(object):
                 else:
                     logger.warning("... OAuth2 token info URL missing. **IGNORING SECURITY REQUIREMENTS**",
                                    extra=vars(self))
-            elif security_definition['type'] in ('apiKey', 'basic'):
+            elif security_definition['type'] == 'basic':
+                return verify_basic_auth
+            elif security_definition['type'] == 'apiKey':
                 logger.debug(
                     "... Security type '%s' not natively supported by Connexion; you should handle it yourself",
                     security_definition['type'], extra=vars(self))

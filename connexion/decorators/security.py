@@ -3,8 +3,11 @@ import functools
 import logging
 import os
 import textwrap
+from hmac import compare_digest
 
+import flask
 import requests
+from werkzeug.exceptions import Unauthorized
 
 from connexion.utils import get_function_from_name
 
@@ -152,5 +155,44 @@ def verify_oauth_remote(token_info_url, allowed_scopes, function):
         validate_token_info(token_info, allowed_scopes)
         request.context['user'] = token_info.get('uid')
         request.context['token_info'] = token_info
+        return function(request)
+    return wrapper
+
+
+def check_basic_auth(username, password):
+    conf = flask.current_app.config.get('SWAGGER_BASIC_AUTH')
+
+    if conf is None:
+        return False
+    elif callable(conf):
+        return conf(username, password)
+    elif isinstance(conf, (list, tuple)) and len(conf) == 2:
+        return username == conf[0] and compare_digest(password, conf[1])
+    elif isinstance(conf, dict):
+        password_ = conf.get(username)
+        if password_ is None:
+            # mitigate information leak: make both cases same run time
+            return compare_digest(password, 'foo-bar')
+        else:
+            return compare_digest(password, password_)
+    else:
+        raise ValueError(
+            'SWAGGER_BASIC_AUTH must be either callable(username, password), '
+            'a tuple or list with exactly two items [username, password] or a '
+            'dict{username: password}')
+
+
+def verify_basic_auth(function):
+    """
+    Decorator to verify basic auth
+    :type function: types.FunctionType
+    :rtype: types.FunctionType
+    """
+    @functools.wraps(function)
+    def wrapper(request):
+        logger.debug("%s basic auth verification...", request.url)
+        auth = flask.request.authorization
+        if not (auth and check_basic_auth(auth.username, auth.password)):
+            raise Unauthorized()
         return function(request)
     return wrapper
